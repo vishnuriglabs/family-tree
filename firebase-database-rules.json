@@ -1,0 +1,21 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "familyMembers": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$memberId": {
+        ".validate": "newData.hasChild('createdBy') && (auth.uid === newData.child('createdBy').val() || auth.uid === data.child('createdBy').val())"
+      }
+    },
+    "test": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

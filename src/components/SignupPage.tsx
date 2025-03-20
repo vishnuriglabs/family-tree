@@ -1,13 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Lock, Building2, Phone, GraduationCap, MapPin, ChevronRight, ChevronLeft, Check } from 'lucide-react';
+import { User, Mail, Lock, Building2, Phone, GraduationCap, MapPin, ChevronRight, ChevronLeft, Check, Upload, X } from 'lucide-react';
 import { DarkModeToggle } from './DarkModeToggle';
+import { useAuth } from '../utils/AuthContext';
+import { createUserProfile } from '../utils/database';
+import { FirebaseError } from 'firebase/app';
+import { set, ref } from 'firebase/database';
+import { database } from '../utils/firebase';
+import { Logo } from './Logo';
+import { logActivity, ActivityType } from '../utils/activity';
+
+// Add constants for image validation
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 
 export function SignupPage() {
   const navigate = useNavigate();
+  const { signup } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
+  const [signupError, setSignupError] = useState<string | null>(null);
+  
+  // File upload state
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -36,6 +55,48 @@ export function SignupPage() {
     phone: '',
     education: ''
   });
+  
+  // Handle image change
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setImageError(null);
+
+    if (!file) return;
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      setImageError(`File size should be less than ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
+      return;
+    }
+
+    // Validate file type
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      setImageError('Only .jpg, .jpeg, .png and .webp files are accepted');
+      return;
+    }
+
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setProfileImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Remove image
+  const removeImage = () => {
+    setProfileImage(null);
+    setImageFile(null);
+    setImageError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Trigger file input
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
   
   // Handle input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -131,19 +192,105 @@ export function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (validateStep()) {
-      setIsSubmitting(true);
+    // Validate all fields first
+    const stepValid = validateStep();
+    if (!stepValid) {
+      return;
+    }
+    
+    console.log("Starting signup process with form data:", { 
+      email: formData.email, 
+      familyName: formData.familyName,
+      fullName: formData.fullName 
+    });
+    
+    setIsSubmitting(true);
+    setSignupError(null);
+    
+    try {
+      // Create user with Firebase Authentication
+      console.log("Attempting to create Firebase user account...");
+      const userCredential = await signup(formData.email, formData.password);
       
-      try {
-        // Simulating API call
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        console.log('Form submitted:', formData);
-        setIsComplete(true);
-      } catch (error) {
-        console.error('Error submitting form:', error);
-      } finally {
-        setIsSubmitting(false);
+      // User account created successfully, proceed even if database write fails
+      let dbWriteSuccess = false;
+      
+      // Create user profile in Firebase Realtime Database
+      if (userCredential && userCredential.user) {
+        console.log("User created successfully in Firebase Auth:", userCredential.user.uid);
+        
+        const userProfile = {
+          uid: userCredential.user.uid,
+          email: formData.email,
+          displayName: formData.fullName,
+          familyTreeName: formData.familyName,
+          gender: formData.gender,
+          job: formData.job,
+          address: formData.address,
+          phone: formData.phone,
+          education: formData.education,
+          photoURL: profileImage || '',
+          createdAt: Date.now()
+        };
+        
+        try {
+          console.log("Attempting to create user profile in Realtime Database:", userProfile);
+          await createUserProfile(userProfile);
+          console.log("User profile successfully created in database");
+          dbWriteSuccess = true;
+        } catch (dbError) {
+          console.error("Error saving user profile to database:", dbError);
+          // Don't throw - continue with auth-only signup
+        }
+      } else {
+        console.error("User credential is missing user object");
       }
+      
+      // Even if database write failed, we consider signup complete if auth worked
+      setIsComplete(true);
+      
+      // Log the signup activity
+      if (userCredential && userCredential.user) {
+        await logActivity(
+          userCredential.user.uid,
+          userCredential.user.displayName || formData.fullName,
+          ActivityType.USER_SIGNUP,
+          {
+            userEmail: userCredential.user.email || formData.email
+          }
+        );
+      }
+      
+      // Redirect to dashboard after a delay
+      setTimeout(() => {
+        console.log("Redirecting to dashboard");
+        // Pass a query parameter if DB write failed so we can show a message
+        if (!dbWriteSuccess) {
+          navigate('/dashboard?db_incomplete=true');
+        } else {
+          navigate('/dashboard');
+        }
+      }, 2000);
+    } catch (error) {
+      const firebaseError = error as FirebaseError;
+      console.error('Signup error:', firebaseError);
+      
+      // Handle different Firebase auth errors
+      switch (firebaseError.code) {
+        case 'auth/email-already-in-use':
+          setSignupError('This email is already registered. Please use another email or login.');
+          break;
+        case 'auth/invalid-email':
+          setSignupError('Invalid email address. Please check and try again.');
+          break;
+        case 'auth/weak-password':
+          setSignupError('Password is too weak. Please choose a stronger password.');
+          break;
+        default:
+          setSignupError('An error occurred during signup. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
@@ -240,6 +387,65 @@ export function SignupPage() {
           {/* Step 1: Basic Information */}
           {currentStep === 0 && (
             <div className="space-y-4">
+              {/* Profile Picture Upload */}
+              <div className="flex flex-col items-center mb-4">
+                <div className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Profile Picture (Optional)
+                </div>
+                <div className="mt-1 flex flex-col items-center">
+                  <div 
+                    className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-200 dark:border-gray-700 flex items-center justify-center cursor-pointer"
+                    onClick={triggerFileInput}
+                  >
+                    {profileImage ? (
+                      <img
+                        src={profileImage}
+                        alt="Profile preview"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-700 w-full h-full">
+                        <User size={36} className="text-gray-400 dark:text-gray-500" />
+                        <span className="text-xs text-gray-500 dark:text-gray-400 mt-2">Add Photo</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageChange}
+                    accept="image/png, image/jpeg, image/jpg, image/webp"
+                    className="hidden"
+                  />
+
+                  <div className="flex mt-3 space-x-2">
+                    <button
+                      type="button"
+                      onClick={triggerFileInput}
+                      className="inline-flex items-center px-3 py-1 border border-gray-300 dark:border-gray-600 shadow-sm text-xs leading-4 font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
+                    >
+                      <Upload size={14} className="mr-1" />
+                      Upload
+                    </button>
+                    {profileImage && (
+                      <button
+                        type="button"
+                        onClick={removeImage}
+                        className="inline-flex items-center px-3 py-1 border border-gray-300 dark:border-gray-600 shadow-sm text-xs leading-4 font-medium rounded-md text-red-600 dark:text-red-400 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
+                      >
+                        <X size={14} className="mr-1" />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+
+                  {imageError && (
+                    <p className="mt-2 text-sm text-red-600 dark:text-red-400">{imageError}</p>
+                  )}
+                </div>
+              </div>
+              
               <div>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" size={18} />

@@ -1,42 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Users, Home, PlusCircle, FileText, UserCog, BarChart3, LogOut, 
+  Users, Home, FileText, UserCog, BarChart3, LogOut, 
   Search, ChevronLeft, ChevronRight, SlidersHorizontal, Bell, CalendarDays
 } from 'lucide-react';
 import { DarkModeToggle } from './DarkModeToggle';
 import { motion } from 'framer-motion';
+import { useAdminAuth } from '../utils/AdminAuthContext';
+import { getDatabase, ref, get, query, orderByChild, limitToLast, push, set } from 'firebase/database';
+import { database } from '../utils/firebase';
+import { format } from 'date-fns';
+import { ActivityType } from '../utils/activity';
 
-// Mock data - would be replaced with API calls in a real application
-const mockStats = {
-  totalUsers: 186,
-  totalFamilies: 42,
-  recentMembers: 8,
-  pendingRequests: 3
-};
+// Database paths
+const USERS_PATH = 'users';
+const FAMILY_MEMBERS_PATH = 'familyMembers';
 
-const mockRecentActivity = [
-  { id: 1, user: 'james.wilson@example.com', action: 'Added new member', family: 'Wilson', date: '2023-03-17 14:32' },
-  { id: 2, user: 'emily.johnson@example.com', action: 'Updated family details', family: 'Johnson', date: '2023-03-17 11:15' },
-  { id: 3, user: 'michael.smith@example.com', action: 'Deleted member', family: 'Smith', date: '2023-03-16 19:45' },
-  { id: 4, user: 'sarah.brown@example.com', action: 'Added new member', family: 'Brown', date: '2023-03-16 16:22' },
-  { id: 5, user: 'david.jones@example.com', action: 'Updated family details', family: 'Jones', date: '2023-03-16 10:08' },
-  { id: 6, user: 'lisa.miller@example.com', action: 'Added new member', family: 'Miller', date: '2023-03-15 15:30' },
-  { id: 7, user: 'robert.davis@example.com', action: 'Updated member details', family: 'Davis', date: '2023-03-15 13:17' },
-  { id: 8, user: 'jennifer.garcia@example.com', action: 'Added new member', family: 'Garcia', date: '2023-03-15 09:42' },
-];
+// Stats interface
+interface DashboardStats {
+  totalUsers: number;
+  totalFamilies: number;
+  recentMembers: number;
+  loading: boolean;
+}
 
+// Mock chart data for UI demonstration
 const mockChartData = {
-  genderRatio: { male: 85, female: 93, other: 8 },
-  ageGroups: { 
-    children: 14, 
-    teens: 18, 
-    youngAdults: 32, 
-    adults: 87, 
-    seniors: 35 
+  genderRatio: {
+    male: 55,
+    female: 42,
+    other: 3
   },
-  monthlyActivity: [12, 19, 15, 23, 28, 25, 21, 18, 24, 29, 22, 30]
+  ageGroups: {
+    children: 15,
+    teens: 12,
+    youngAdults: 28,
+    adults: 35,
+    seniors: 10
+  }
 };
+
+// Replace mockRecentActivity with a proper interface and state
+interface ActivityItem {
+  id: string;
+  userId: string;
+  user: string;
+  userEmail?: string;
+  action: string;
+  family?: string;
+  details?: string;
+  entityId?: string;
+  timestamp: number;
+  date: string;
+}
 
 export function AdminDashboard() {
   const navigate = useNavigate();
@@ -44,14 +60,133 @@ export function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { adminUser, adminLogout, isAdmin } = useAdminAuth();
+  const [stats, setStats] = useState<DashboardStats>({
+    totalUsers: 0,
+    totalFamilies: 0,
+    recentMembers: 0,
+    loading: true
+  });
   
+  // Add activities state to the component
+  const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  
+  // Add redirect if not logged in as admin
+  useEffect(() => {
+    if (!isAdmin) {
+      navigate('/admin-login');
+    }
+  }, [isAdmin, navigate]);
+  
+  // Fetch real stats from Firebase
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        // Fetch users count
+        const usersRef = ref(database, USERS_PATH);
+        const usersSnapshot = await get(usersRef);
+        const totalUsers = usersSnapshot.exists() ? Object.keys(usersSnapshot.val()).length : 0;
+        
+        // Fetch family members
+        const membersRef = ref(database, FAMILY_MEMBERS_PATH);
+        const membersSnapshot = await get(membersRef);
+        const allMembers = membersSnapshot.exists() ? membersSnapshot.val() : {};
+        
+        // Count unique families (by createdBy field)
+        const uniqueFamilies = new Set();
+        let recentMembersCount = 0;
+        const currentTime = Date.now();
+        const oneWeekAgo = currentTime - (7 * 24 * 60 * 60 * 1000);
+        
+        Object.values(allMembers).forEach((member: any) => {
+          if (member.createdBy) {
+            uniqueFamilies.add(member.createdBy);
+          }
+          
+          // Count members created in the last week
+          if (member.createdAt && member.createdAt > oneWeekAgo) {
+            recentMembersCount++;
+          }
+        });
+        
+        setStats({
+          totalUsers,
+          totalFamilies: uniqueFamilies.size,
+          recentMembers: recentMembersCount,
+          loading: false
+        });
+      } catch (error) {
+        console.error("Error fetching stats:", error);
+        setStats(prev => ({...prev, loading: false}));
+      }
+    }
+    
+    fetchStats();
+  }, []);
+  
+  // Add this as a new useEffect to fetch recent activities
+  useEffect(() => {
+    async function fetchRecentActivities() {
+      setActivitiesLoading(true);
+      try {
+        const activitiesRef = query(
+          ref(database, 'activities'),
+          orderByChild('timestamp'),
+          limitToLast(20)
+        );
+        
+        const snapshot = await get(activitiesRef);
+        const activitiesData: ActivityItem[] = [];
+        
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          Object.keys(data).forEach(key => {
+            const activity = data[key];
+            activitiesData.push({
+              id: key,
+              userId: activity.userId,
+              user: activity.user,
+              userEmail: activity.userEmail || 'N/A',
+              action: activity.action,
+              family: activity.family || 'N/A',
+              details: activity.details || '',
+              entityId: activity.entityId || '',
+              timestamp: activity.timestamp,
+              date: formatDate(activity.timestamp)
+            });
+          });
+        }
+        
+        // Sort activities by timestamp in descending order (newest first)
+        activitiesData.sort((a, b) => b.timestamp - a.timestamp);
+        setRecentActivities(activitiesData);
+      } catch (error) {
+        console.error("Error fetching recent activities:", error);
+      } finally {
+        setActivitiesLoading(false);
+      }
+    }
+    
+    fetchRecentActivities();
+  }, []);
+
+  // Add this utility function to format timestamps
+  const formatDate = (timestamp: number): string => {
+    if (!timestamp) return '';
+    
+    const date = new Date(timestamp);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  };
+
   // Pagination logic
   const itemsPerPage = 5;
-  const filteredActivity = mockRecentActivity.filter(item => 
+  const filteredActivity = recentActivities.filter(item => 
     (selectedFilter === 'all' || item.action.toLowerCase().includes(selectedFilter)) &&
     (item.user.toLowerCase().includes(searchQuery.toLowerCase()) || 
      item.family.toLowerCase().includes(searchQuery.toLowerCase()) ||
-     item.action.toLowerCase().includes(searchQuery.toLowerCase()))
+     item.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
+     (item.userEmail && item.userEmail.toLowerCase().includes(searchQuery.toLowerCase())))
   );
   
   const totalPages = Math.ceil(filteredActivity.length / itemsPerPage);
@@ -61,16 +196,12 @@ export function AdminDashboard() {
   );
 
   // Action handlers
-  const handleAddFamilyMember = () => {
-    navigate('/add-family-member');
-  };
-
   const handleViewFamilyDetails = () => {
     navigate('/family-details');
   };
 
   const handleLogout = () => {
-    // In a real app, this would clear auth tokens, etc.
+    adminLogout();
     navigate('/admin-login');
   };
 
@@ -130,19 +261,6 @@ export function AdminDashboard() {
             <li>
               <a 
                 href="#" 
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate('/add-family-member');
-                }}
-                className="flex items-center p-3 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 group"
-              >
-                <PlusCircle size={20} />
-                {!isSidebarCollapsed && <span className="ml-3">Add Member</span>}
-              </a>
-            </li>
-            <li>
-              <a 
-                href="#" 
                 className="flex items-center p-3 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 group"
               >
                 <BarChart3 size={20} />
@@ -175,8 +293,13 @@ export function AdminDashboard() {
             <button className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
               <Bell size={20} className="text-gray-600 dark:text-gray-300" />
             </button>
-            <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-medium">
-              A
+            <div className="flex items-center">
+              <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-medium">
+                {adminUser?.username.charAt(0).toUpperCase() || 'A'}
+              </div>
+              {!isSidebarCollapsed && (
+                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{adminUser?.username || 'Admin'}</span>
+              )}
             </div>
             {isSidebarCollapsed && <DarkModeToggle />}
           </div>
@@ -198,7 +321,11 @@ export function AdminDashboard() {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Users</p>
-                    <p className="text-2xl font-semibold text-gray-900 dark:text-white">{mockStats.totalUsers}</p>
+                    {stats.loading ? (
+                      <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    ) : (
+                      <p className="text-2xl font-semibold text-gray-900 dark:text-white">{stats.totalUsers}</p>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -213,7 +340,11 @@ export function AdminDashboard() {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Families</p>
-                    <p className="text-2xl font-semibold text-gray-900 dark:text-white">{mockStats.totalFamilies}</p>
+                    {stats.loading ? (
+                      <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    ) : (
+                      <p className="text-2xl font-semibold text-gray-900 dark:text-white">{stats.totalFamilies}</p>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -224,11 +355,15 @@ export function AdminDashboard() {
               >
                 <div className="flex items-center">
                   <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
-                    <PlusCircle className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                    <CalendarDays className="h-8 w-8 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Recent Members</p>
-                    <p className="text-2xl font-semibold text-gray-900 dark:text-white">{mockStats.recentMembers}</p>
+                    {stats.loading ? (
+                      <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+                    ) : (
+                      <p className="text-2xl font-semibold text-gray-900 dark:text-white">{stats.recentMembers}</p>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -242,21 +377,21 @@ export function AdminDashboard() {
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={handleAddFamilyMember}
-                className="flex items-center justify-center p-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow"
-              >
-                <PlusCircle className="mr-2" />
-                Add Family Member
-              </motion.button>
-              
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.98 }}
                 onClick={handleViewFamilyDetails}
                 className="flex items-center justify-center p-4 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow"
               >
                 <FileText className="mr-2" />
                 View Family Details
+              </motion.button>
+              
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/update-relationships')}
+                className="flex items-center justify-center p-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow"
+              >
+                <UserCog className="mr-2" />
+                Manage Relationships
               </motion.button>
             </div>
           </section>
@@ -283,80 +418,95 @@ export function AdminDashboard() {
             </div>
             
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-700">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">User</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Action</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Family</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date & Time</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {paginatedActivity.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
-                        <button
-                          onClick={() => navigate('/add-family-member')}
-                          className="text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none"
-                        >
-                          {item.user}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.action}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                        <button
-                          onClick={() => navigate('/add-family-member')}
-                          className="text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none"
-                        >
-                          {item.family}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.date}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              
-              {/* Pagination */}
-              <div className="px-6 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
-                <div className="text-sm text-gray-700 dark:text-gray-300">
-                  Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
-                  <span className="font-medium">
-                    {Math.min(currentPage * itemsPerPage, filteredActivity.length)}
-                  </span>{' '}
-                  of <span className="font-medium">{filteredActivity.length}</span> results
+              {activitiesLoading ? (
+                <div className="p-8 flex justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="p-2 rounded-md border border-gray-200 dark:border-gray-700 disabled:opacity-50"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  {Array.from({ length: totalPages }).map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setCurrentPage(index + 1)}
-                      className={`w-8 h-8 rounded-md ${
-                        currentPage === index + 1
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
-                      }`}
-                    >
-                      {index + 1}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
-                    className="p-2 rounded-md border border-gray-200 dark:border-gray-700 disabled:opacity-50"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
+              ) : recentActivities.length === 0 ? (
+                <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+                  No recent activities found
                 </div>
-              </div>
+              ) : (
+                <>
+                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead className="bg-gray-50 dark:bg-gray-700">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Action</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Family</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date & Time</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                      {paginatedActivity.map((item) => (
+                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                            <button
+                              onClick={() => navigate('/family-details')}
+                              className="text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none"
+                            >
+                              {item.user}
+                              {item.userEmail && (
+                                <span className="block text-xs text-gray-500 dark:text-gray-400">{item.userEmail}</span>
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.action}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                            <button
+                              onClick={() => navigate('/family-details')}
+                              className="text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none"
+                            >
+                              {item.family}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.date}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  {/* Pagination */}
+                  <div className="px-6 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
+                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                      Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+                      <span className="font-medium">
+                        {Math.min(currentPage * itemsPerPage, filteredActivity.length)}
+                      </span>{' '}
+                      of <span className="font-medium">{filteredActivity.length}</span> results
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="p-2 rounded-md border border-gray-200 dark:border-gray-700 disabled:opacity-50"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      {Array.from({ length: totalPages }).map((_, index) => (
+                        <button
+                          key={index}
+                          onClick={() => setCurrentPage(index + 1)}
+                          className={`w-8 h-8 rounded-md ${
+                            currentPage === index + 1
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+                          }`}
+                        >
+                          {index + 1}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="p-2 rounded-md border border-gray-200 dark:border-gray-700 disabled:opacity-50"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </section>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Shield, User, Lock, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
 import { DarkModeToggle } from './DarkModeToggle';
 import { useNavigate } from 'react-router-dom';
+import { useAdminAuth } from '../utils/AdminAuthContext';
 
 const adminLoginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
@@ -18,6 +19,14 @@ export function AdminLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { adminLogin, isAdmin } = useAdminAuth();
+
+  // Redirect if already logged in as admin
+  useEffect(() => {
+    if (isAdmin) {
+      navigate('/admin-dashboard');
+    }
+  }, [isAdmin, navigate]);
 
   const {
     register,
@@ -32,20 +41,18 @@ export function AdminLoginPage() {
     setLoginError(null);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Use the adminLogin function from AdminAuthContext
+      const success = await adminLogin(data.username, data.password);
       
-      // Simulate authentication error
-      if (data.username !== 'admin') {
-        throw new Error('Invalid credentials');
+      if (success) {
+        // If successful, navigate to admin dashboard
+        navigate('/admin-dashboard');
+      } else {
+        setLoginError('Invalid username or password');
       }
-
-      // Handle successful login
-      console.log('Admin logged in:', data);
-      navigate('/admin-dashboard'); // Navigate to admin dashboard instead of user dashboard
-      
     } catch (error) {
-      setLoginError('Invalid username or password');
+      console.error('Admin login failed:', error);
+      setLoginError('An error occurred during login. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -161,6 +168,9 @@ export function AdminLoginPage() {
               <div className="text-center border-t border-gray-200 dark:border-gray-700 pt-4 mt-6">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   This portal is restricted to authorized personnel only.
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                  Demo credentials: admin / adminpass123
                 </p>
               </div>
             </form>

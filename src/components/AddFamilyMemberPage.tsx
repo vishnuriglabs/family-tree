@@ -4,16 +4,20 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ChevronLeft, Upload, X, Camera, User } from 'lucide-react';
+import { addFamilyMember, getFamilyMembersByUser, getFamilyMember } from '../utils/database';
+import { useAuth } from '../utils/AuthContext';
+import { AuthContext } from '../utils/AuthContext';
+import { database } from '../utils/firebase';
+import { ref, push, set } from 'firebase/database';
+import { logActivity, ActivityType } from '../utils/activity';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 
-// Zod schema for form validation
+// Simplified schema for form validation - removed familyName and relationshipWithId
 const memberSchema = z.object({
   firstName: z.string().min(2, 'First name should be at least 2 characters'),
   lastName: z.string().min(2, 'Last name should be at least 2 characters'),
-  familyName: z.string().min(1, 'Please select a family name'),
-  relationshipWithId: z.string().min(1, 'Please select a family member'),
   gender: z.enum(['male', 'female', 'other'], {
     errorMap: () => ({ message: 'Please select a gender' }),
   }),
@@ -23,6 +27,9 @@ const memberSchema = z.object({
     return date <= today;
   }, 'Date of birth cannot be in the future'),
   relation: z.string().min(1, 'Please select a relation'),
+  relateToExisting: z.boolean().optional(),
+  existingMemberId: z.string().optional(),
+  relationshipType: z.string().optional(),
   phone: z.string().optional()
     .refine((val) => !val || /^\+?[0-9]{10,15}$/.test(val), {
       message: 'Invalid phone number format',
@@ -39,38 +46,6 @@ const memberSchema = z.object({
 
 type MemberFormData = z.infer<typeof memberSchema>;
 
-// Add mock data for families and their members
-const mockFamilies = [
-  { id: '1', name: 'Wilson' },
-  { id: '2', name: 'Johnson' },
-  { id: '3', name: 'Smith' },
-  { id: '4', name: 'Brown' },
-  { id: '5', name: 'Davis' }
-];
-
-const mockFamilyMembers = {
-  '1': [ // Wilson family
-    { id: '101', name: 'John Wilson', relation: 'Father' },
-    { id: '102', name: 'Sarah Wilson', relation: 'Mother' },
-    { id: '103', name: 'Michael Wilson', relation: 'Son' }
-  ],
-  '2': [ // Johnson family
-    { id: '201', name: 'Robert Johnson', relation: 'Father' },
-    { id: '202', name: 'Patricia Johnson', relation: 'Mother' }
-  ],
-  '3': [ // Smith family
-    { id: '301', name: 'William Smith', relation: 'Father' },
-    { id: '302', name: 'Mary Smith', relation: 'Mother' }
-  ],
-  '4': [ // Brown family
-    { id: '401', name: 'Richard Brown', relation: 'Father' },
-    { id: '402', name: 'Jennifer Brown', relation: 'Mother' }
-  ],
-  '5': [ // Davis family
-    { id: '501', name: 'Robert Davis', relation: 'Father' }
-  ]
-};
-
 export function AddFamilyMemberPage() {
   const navigate = useNavigate();
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -78,39 +53,97 @@ export function AddFamilyMemberPage() {
   const [imageError, setImageError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<boolean | null>(null);
-  const [selectedFamilyId, setSelectedFamilyId] = useState<string>('');
-  const [availableFamilyMembers, setAvailableFamilyMembers] = useState<Array<{id: string, name: string, relation: string}>>([]);
+  const [userFamilyMembers, setUserFamilyMembers] = useState<Record<string, any>>({});
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [relationType, setRelationType] = useState<string | null>(null);
+  const [selectedMember, setSelectedMember] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { currentUser } = useAuth();
 
   const {
     register,
     handleSubmit,
     formState: { errors, isValid, isDirty },
     reset,
-    setValue,
-    watch
+    watch,
+    setValue
   } = useForm<MemberFormData>({
     resolver: zodResolver(memberSchema),
     mode: 'onChange',
   });
 
-  // Watch the familyName field to update available family members
-  const watchedFamilyName = watch('familyName');
-
-  // Update available family members when family selection changes
+  // Load existing family members and check for selected member from sessionStorage
   useEffect(() => {
-    if (watchedFamilyName) {
-      const familyId = mockFamilies.find(f => f.name === watchedFamilyName)?.id;
-      if (familyId) {
-        setSelectedFamilyId(familyId);
-        setAvailableFamilyMembers(mockFamilyMembers[familyId] || []);
-        // Reset the relationshipWithId field when family changes
-        setValue('relationshipWithId', '');
+    async function loadInitialData() {
+      console.log('AddFamilyMemberPage: loadInitialData called');
+      
+      if (currentUser) {
+        try {
+          // Get family members
+          const members = await getFamilyMembersByUser(currentUser.uid);
+          setUserFamilyMembers(members);
+          
+          // Check for selected member in sessionStorage
+          const storedMemberId = sessionStorage.getItem('selectedMemberId');
+          const storedRelationType = sessionStorage.getItem('relationType');
+          
+          console.log('AddFamilyMemberPage: Checking sessionStorage', { 
+            storedMemberId, 
+            storedRelationType,
+            allSessionStorage: Object.keys(sessionStorage).map(key => `${key}: ${sessionStorage.getItem(key)}`)
+          });
+          
+          if (storedMemberId && storedRelationType) {
+            console.log(`Found stored member ID: ${storedMemberId}, relation: ${storedRelationType}`);
+            
+            // Get the details of the selected member
+            const memberDetails = await getFamilyMember(storedMemberId);
+            console.log('Fetched member details:', memberDetails);
+            
+            if (memberDetails) {
+              setSelectedMemberId(storedMemberId);
+              setRelationType(storedRelationType);
+              setSelectedMember(memberDetails);
+              
+              // Set default relationship values based on the stored relation type
+              setValue('relateToExisting', true);
+              setValue('existingMemberId', storedMemberId);
+              setValue('relationshipType', storedRelationType === 'sibling' ? 'child' : storedRelationType);
+              
+              // Set a default relation based on the relationship type
+              if (storedRelationType === 'child') {
+                setValue('relation', memberDetails?.gender === 'male' ? 'son' : 'daughter');
+              } else if (storedRelationType === 'parent') {
+                setValue('relation', memberDetails?.gender === 'male' ? 'father' : 'mother');
+              } else if (storedRelationType === 'spouse') {
+                setValue('relation', 'spouse');
+              } else if (storedRelationType === 'sibling') {
+                setValue('relation', memberDetails?.gender === 'male' ? 'brother' : 'sister');
+              }
+              
+              console.log(`Loaded member details for ${memberDetails.name}, set relation type: ${storedRelationType}`);
+            } else {
+              console.error(`Failed to load details for member ID: ${storedMemberId}`);
+            }
+            
+            // Clear the sessionStorage after use
+            sessionStorage.removeItem('selectedMemberId');
+            sessionStorage.removeItem('relationType');
+            console.log('Cleared sessionStorage after use');
+          }
+        } catch (error) {
+          console.error("Failed to load initial data:", error);
+        }
       }
-    } else {
-      setAvailableFamilyMembers([]);
     }
-  }, [watchedFamilyName, setValue]);
+    
+    loadInitialData();
+  }, [currentUser, setValue]);
+
+  // Watched values for conditional rendering
+  const watchRelation = watch('relation');
+  const watchRelateToExisting = watch('relateToExisting');
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -152,57 +185,70 @@ export function AddFamilyMemberPage() {
   };
 
   const onSubmit = async (data: MemberFormData) => {
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
+    
     setIsSubmitting(true);
     setSubmitSuccess(null);
     
     try {
-      // Get related family member details
-      const relatedMember = availableFamilyMembers.find(m => m.id === data.relationshipWithId);
-
-      // Format the data - create a formatted object that matches the expected format in FamilyDetailsPage
-      const formattedData = {
-        // In a real app, this would be generated by the backend
-        id: Math.floor(Math.random() * 10000).toString(),
+      setLoading(true);
+      
+      // Create the member data object
+      const memberData = {
         name: `${data.firstName} ${data.lastName}`,
-        familyName: data.familyName,
-        relation: data.relation.charAt(0).toUpperCase() + data.relation.slice(1),
-        dob: data.dateOfBirth,
-        gender: data.gender.charAt(0).toUpperCase() + data.gender.slice(1),
-        education: data.education || '',
-        job: data.occupation || '',
-        contact: data.phone || '',
-        // Additional fields not shown in the table but stored for the record
+        relation: data.relation,
+        birthDate: data.dateOfBirth,
+        gender: data.gender as 'male' | 'female' | 'other',
+        bio: data.additionalNotes || '',
+        photoUrl: profileImage || '',
+        createdBy: currentUser?.uid,
+        createdAt: Date.now(),
+        isRoot: Object.keys(userFamilyMembers).length === 0,
+        phone: data.phone || '',
         email: data.email || '',
-        address: data.address || '',
-        additionalNotes: data.additionalNotes || '',
-        imageUrl: profileImage || '',
-        // Relationship details
-        relatedToMemberId: data.relationshipWithId,
-        relatedToMemberName: relatedMember ? relatedMember.name : '',
-        relatedToMemberRelation: relatedMember ? relatedMember.relation : ''
+        education: data.education || '',
+        occupation: data.occupation || '',
+        address: data.address || ''
       };
       
-      // Simulate API call to add family member
-      console.log('Formatted data for submission:', formattedData);
-      console.log('Original form data:', data);
-      console.log('Image file:', imageFile);
+      // Add the family member to the database
+      const newMemberId = await addFamilyMember(memberData);
+      console.log('New family member added with ID:', newMemberId);
       
-      // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Log the activity after successful addition
+      if (currentUser) {
+        await logActivity(
+          currentUser.uid,
+          currentUser.displayName || 'Unknown User',
+          ActivityType.MEMBER_ADDED,
+          {
+            userEmail: currentUser.email || undefined,
+            family: memberData.name,
+            entityId: newMemberId || undefined,
+            details: `Added ${memberData.name} as ${memberData.relation}`
+          }
+        );
+      }
       
+      // Show success message and redirect
       setSubmitSuccess(true);
       reset();
       removeImage();
-
-      // Redirect after success
+      
+      // Redirect after a short delay
       setTimeout(() => {
-        navigate('/family-details');
+        navigate('/dashboard');
       }, 2000);
+      
     } catch (error) {
-      console.error('Error submitting form:', error);
+      console.error('Error adding family member:', error);
       setSubmitSuccess(false);
     } finally {
       setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
@@ -212,7 +258,14 @@ export function AddFamilyMemberPage() {
       <header className="bg-white dark:bg-gray-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Add Family Member</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {selectedMember ? `Add ${relationType === 'child' ? 'Child' : 
+                                relationType === 'parent' ? 'Parent' : 
+                                relationType === 'spouse' ? 'Spouse' : 
+                                relationType === 'sibling' ? 'Sibling' : 
+                                'Family Member'} for ${selectedMember.name}` : 
+                Object.keys(userFamilyMembers).length === 0 ? 'Add Root Family Member' : 'Add Family Member'}
+            </h1>
             <button
               onClick={() => navigate(-1)}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 dark:text-indigo-300 dark:bg-indigo-900/30 dark:hover:bg-indigo-800/50"
@@ -306,54 +359,6 @@ export function AddFamilyMemberPage() {
               <legend className="text-lg font-medium text-gray-900 dark:text-white pb-2 border-b border-gray-200 dark:border-gray-700 w-full">
                 Basic Information
               </legend>
-
-              {/* Family Selection Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="familyName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Family Name *
-                  </label>
-                  <select
-                    id="familyName"
-                    {...register('familyName')}
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    aria-invalid={errors.familyName ? 'true' : 'false'}
-                  >
-                    <option value="">Select family</option>
-                    {mockFamilies.map(family => (
-                      <option key={family.id} value={family.name}>{family.name}</option>
-                    ))}
-                  </select>
-                  {errors.familyName && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                      {errors.familyName.message}
-                    </p>
-                  )}
-                </div>
-                
-                <div>
-                  <label htmlFor="relationshipWithId" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Relationship With *
-                  </label>
-                  <select
-                    id="relationshipWithId"
-                    {...register('relationshipWithId')}
-                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    aria-invalid={errors.relationshipWithId ? 'true' : 'false'}
-                    disabled={availableFamilyMembers.length === 0}
-                  >
-                    <option value="">Select family member</option>
-                    {availableFamilyMembers.map(member => (
-                      <option key={member.id} value={member.id}>{member.name} ({member.relation})</option>
-                    ))}
-                  </select>
-                  {errors.relationshipWithId && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                      {errors.relationshipWithId.message}
-                    </p>
-                  )}
-                </div>
-              </div>
               
               {/* Name fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -437,10 +442,10 @@ export function AddFamilyMemberPage() {
                 </div>
               </div>
 
-              {/* Relation type */}
+              {/* Relation to you */}
               <div>
                 <label htmlFor="relation" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Relation Type *
+                  Relation to You *
                 </label>
                 <select
                   id="relation"
@@ -448,7 +453,7 @@ export function AddFamilyMemberPage() {
                   className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   aria-invalid={errors.relation ? 'true' : 'false'}
                 >
-                  <option value="">Select relation type</option>
+                  <option value="">Select relation</option>
                   <option value="father">Father</option>
                   <option value="mother">Mother</option>
                   <option value="spouse">Spouse</option>
@@ -471,6 +476,68 @@ export function AddFamilyMemberPage() {
                   </p>
                 )}
               </div>
+            </fieldset>
+
+            {/* Relate to Existing Family Member Section */}
+            <fieldset className="space-y-4">
+              <legend className="text-lg font-medium text-gray-900 dark:text-white pb-2 border-b border-gray-200 dark:border-gray-700 w-full">
+                Connect to Existing Family Member (Optional)
+              </legend>
+              
+              <div className="mb-4">
+                <div className="flex items-center mb-2">
+                  <input
+                    id="relateToExisting"
+                    type="checkbox"
+                    {...register('relateToExisting')}
+                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 dark:border-gray-700 dark:bg-gray-700 rounded"
+                  />
+                  <label htmlFor="relateToExisting" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                    Connect this person to an existing family member
+                  </label>
+                </div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  This will create a relationship between this new person and someone already in your family tree
+                </p>
+              </div>
+
+              {watchRelateToExisting && (
+                <div className="space-y-4 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-md border border-gray-200 dark:border-gray-700">
+                  <div>
+                    <label htmlFor="existingMemberId" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Select Existing Family Member
+                    </label>
+                    <select
+                      id="existingMemberId"
+                      {...register('existingMemberId')}
+                      className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select a family member</option>
+                      {Object.entries(userFamilyMembers).map(([id, member]: [string, any]) => (
+                        <option key={id} value={id}>
+                          {member.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="relationshipType" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Relationship Type
+                    </label>
+                    <select
+                      id="relationshipType"
+                      {...register('relationshipType')}
+                      className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">Select relationship type</option>
+                      <option value="parent">Parent of selected person</option>
+                      <option value="child">Child of selected person</option>
+                      <option value="spouse">Spouse of selected person</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </fieldset>
 
             {/* Contact Information */}
@@ -576,7 +643,7 @@ export function AddFamilyMemberPage() {
 
               <div>
                 <label htmlFor="additionalNotes" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Additional Notes
+                  Additional Notes (Biography)
                 </label>
                 <textarea
                   id="additionalNotes"

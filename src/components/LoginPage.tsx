@@ -4,8 +4,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, Lock, Mail, AlertCircle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { DarkModeToggle } from './DarkModeToggle';
+import { useAuth } from '../utils/AuthContext';
+import { FirebaseError } from 'firebase/app';
+import { AuthContext } from '../utils/AuthContext';
+import { ThemeContext } from '../utils/ThemeContext';
+import { logActivity, ActivityType } from '../utils/activity';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -19,6 +24,7 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { login } = useAuth();
   
   const {
     register,
@@ -33,19 +39,42 @@ export function LoginPage() {
     setLoginError(null);
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Use Firebase authentication
+      const user = await login(data.email, data.password);
       
-      // For demo purposes, simulate authentication error for specific email
-      if (data.email === 'test@error.com') {
-        throw new Error('Invalid credentials');
+      // Log the login activity
+      if (user) {
+        await logActivity(
+          user.uid,
+          user.displayName || 'User',
+          ActivityType.USER_LOGIN,
+          {
+            userEmail: user.email
+          }
+        );
       }
       
-      console.log('Form submitted:', data);
-      // Use React Router navigation instead of direct window.location
+      console.log('Login successful, redirecting...');
       navigate('/dashboard');
     } catch (error) {
-      setLoginError('Invalid email or password. Please try again.');
+      const firebaseError = error as FirebaseError;
+      console.error('Login error:', firebaseError);
+      
+      // Handle different Firebase auth errors
+      switch (firebaseError.code) {
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+          setLoginError('Invalid email or password. Please try again.');
+          break;
+        case 'auth/too-many-requests':
+          setLoginError('Too many failed login attempts. Please try again later.');
+          break;
+        case 'auth/user-disabled':
+          setLoginError('This account has been disabled. Please contact support.');
+          break;
+        default:
+          setLoginError('An error occurred during login. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }

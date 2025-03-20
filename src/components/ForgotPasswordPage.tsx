@@ -6,6 +6,9 @@ import { z } from 'zod';
 import { Mail, ArrowLeft, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { DarkModeToggle } from './DarkModeToggle';
 import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../utils/AuthContext';
+import { FirebaseError } from 'firebase/app';
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -16,8 +19,10 @@ type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
 export function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState(false);
   const navigate = useNavigate();
+  const { resetPassword } = useAuth();
 
   const {
     register,
@@ -29,17 +34,30 @@ export function ForgotPasswordPage() {
 
   const onSubmit = async (data: ForgotPasswordFormData) => {
     setIsLoading(true);
-    setError(null);
+    setResetError(null);
+    setResetSuccess(false);
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // For demo purposes, we'll just simulate success
-      console.log('Password reset requested for:', data.email);
-      setIsComplete(true);
+      await resetPassword(data.email);
+      setResetSuccess(true);
+      console.log('Password reset email sent to', data.email);
     } catch (error) {
-      setError('Unable to process your request. Please try again later.');
+      const firebaseError = error as FirebaseError;
+      console.error('Password reset error:', firebaseError);
+      
+      switch (firebaseError.code) {
+        case 'auth/user-not-found':
+          setResetError('No account found with this email address.');
+          break;
+        case 'auth/invalid-email':
+          setResetError('Invalid email address. Please check and try again.');
+          break;
+        case 'auth/too-many-requests':
+          setResetError('Too many requests. Please try again later.');
+          break;
+        default:
+          setResetError('An error occurred. Please try again later.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -74,7 +92,7 @@ export function ForgotPasswordPage() {
           </div>
           
           <div className="p-8">
-            {isComplete ? (
+            {resetSuccess ? (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -103,7 +121,7 @@ export function ForgotPasswordPage() {
               </motion.div>
             ) : (
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                {error && (
+                {resetError && (
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -111,7 +129,7 @@ export function ForgotPasswordPage() {
                              flex items-center space-x-2"
                   >
                     <AlertCircle className="h-5 w-5 flex-shrink-0" />
-                    <p className="text-sm">{error}</p>
+                    <p className="text-sm">{resetError}</p>
                   </motion.div>
                 )}
                 
