@@ -60,12 +60,39 @@ function App() {
             <Router>
               <RouteLogger />
               <Routes>
+                {/* Public routes */}
                 <Route path="/" element={<LandingPage />} />
+                <Route path="/admin-login" element={<AdminLoginPage />} />
+                
+                {/* Admin routes */}
+                <Route path="/admin-dashboard" element={
+                  <AdminProtectedRoute>
+                    <AdminDashboard />
+                  </AdminProtectedRoute>
+                } />
+                <Route path="/admin-dashboard/family-details" element={
+                  <AdminProtectedRoute>
+                    <FamilyDetailsPage />
+                  </AdminProtectedRoute>
+                } />
+                <Route path="/admin-dashboard/add-member" element={
+                  <AdminProtectedRoute>
+                    <AddFamilyMemberPage />
+                  </AdminProtectedRoute>
+                } />
+                <Route path="/admin-dashboard/manage-relationships" element={
+                  <AdminProtectedRoute>
+                    <UpdateRelationships />
+                  </AdminProtectedRoute>
+                } />
+                
+                {/* Redirect old routes to new admin routes */}
+                <Route path="/family-details" element={<Navigate to="/admin-dashboard/family-details" replace />} />
+                
+                {/* User routes */}
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                
-                {/* User routes */}
                 <Route path="/dashboard" element={
                   <ProtectedRoute>
                     <UserDashboard />
@@ -87,32 +114,15 @@ function App() {
                   </ProtectedRoute>
                 } />
                 
-                {/* Admin routes */}
-                <Route path="/admin-login" element={<AdminLoginPage />} />
-                <Route path="/admin-dashboard" element={
-                  <AdminProtectedRoute>
-                    <AdminDashboard />
-                  </AdminProtectedRoute>
-                } />
-                <Route path="/family-details" element={
-                  <ProtectedRoute>
-                    <FamilyDetailsPage />
-                  </ProtectedRoute>
-                } />
-                
                 {/* Family tree routes */}
                 <Route path="/family-tree" element={
                   <ProtectedRoute>
                     <FamilyTreeContainer />
                   </ProtectedRoute>
                 } />
-                <Route path="/update-relationships" element={
-                  <ProtectedRoute>
-                    <UpdateRelationships />
-                  </ProtectedRoute>
-                } />
                 
-                <Route path="*" element={<Navigate to="/" replace />} />
+                {/* 404 route */}
+                <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Router>
           </DarkModeProvider>
