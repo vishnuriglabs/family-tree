@@ -16,6 +16,30 @@
     "familyMembers": {
       ".read": "auth != null",
       ".write": "auth != null"
+    },
+    "relationships": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$memberId": {
+        "spouse": {
+          ".validate": "newData.isString()"
+        },
+        "parents": {
+          "$parentId": {
+            ".validate": "newData.isBoolean()"
+          }
+        },
+        "children": {
+          "$childId": {
+            ".validate": "newData.isBoolean()"
+          }
+        },
+        "siblings": {
+          "$siblingId": {
+            ".validate": "newData.isBoolean()"
+          }
+        }
+      }
     }
   }
 }
