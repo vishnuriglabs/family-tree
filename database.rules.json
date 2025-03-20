@@ -1,0 +1,21 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "activities": {
+      ".indexOn": ["timestamp"],
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "familyMembers": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}

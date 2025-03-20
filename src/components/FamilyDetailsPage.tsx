@@ -128,18 +128,31 @@ export function FamilyDetailsPage() {
     return date.toLocaleDateString('en-US');
   };
 
+  // Handle back navigation
+  const handleBack = () => {
+    navigate('/admin-dashboard');
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Family Details</h1>
+      <div className="flex items-center mb-6">
         <button
-          onClick={handleAddMember}
-          className="flex items-center px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-700"
+          onClick={handleBack}
+          className="mr-4 p-2 hover:bg-gray-800 rounded-lg transition-colors"
         >
-          <Plus size={20} className="mr-2" />
-          Add Member
+          <ChevronLeft size={24} />
         </button>
+        <div className="flex-1 flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Family Details</h1>
+          <button
+            onClick={handleAddMember}
+            className="flex items-center px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-700"
+          >
+            <Plus size={20} className="mr-2" />
+            Add Member
+          </button>
+        </div>
       </div>
 
       {/* Search and Filter Bar */}

@@ -11,6 +11,8 @@ import { getDatabase, ref, get, query, orderByChild, limitToLast, push, set } fr
 import { database } from '../utils/firebase';
 import { format } from 'date-fns';
 import { ActivityType } from '../utils/activity';
+import { RecentActivities } from './RecentActivities';
+import { DataInsights } from './DataInsights';
 
 // Database paths
 const USERS_PATH = 'users';
@@ -306,21 +308,18 @@ export function AdminDashboard() {
         </div>
 
         {/* Dashboard content */}
-        <div className="p-6">
+        <div className="p-6 space-y-6">
           {/* Overview Cards */}
           <section>
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <motion.div 
-                whileHover={{ scale: 1.02 }}
-                className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow"
-              >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
                 <div className="flex items-center">
-                  <div className="p-3 rounded-full bg-indigo-100 dark:bg-indigo-900">
-                    <Users className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
+                  <div className="p-3 bg-indigo-100 dark:bg-indigo-900 rounded-full">
+                    <Users className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Users</p>
+                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Users</h3>
                     {stats.loading ? (
                       <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
                     ) : (
@@ -328,18 +327,15 @@ export function AdminDashboard() {
                     )}
                   </div>
                 </div>
-              </motion.div>
+              </div>
               
-              <motion.div 
-                whileHover={{ scale: 1.02 }}
-                className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow"
-              >
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
                 <div className="flex items-center">
-                  <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
-                    <Home className="h-8 w-8 text-green-600 dark:text-green-400" />
+                  <div className="p-3 bg-green-100 dark:bg-green-900 rounded-full">
+                    <Home className="h-6 w-6 text-green-600 dark:text-green-400" />
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Families</p>
+                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Families</h3>
                     {stats.loading ? (
                       <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
                     ) : (
@@ -347,18 +343,15 @@ export function AdminDashboard() {
                     )}
                   </div>
                 </div>
-              </motion.div>
+              </div>
               
-              <motion.div 
-                whileHover={{ scale: 1.02 }}
-                className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow"
-              >
+              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
                 <div className="flex items-center">
-                  <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
-                    <CalendarDays className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                  <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-full">
+                    <CalendarDays className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Recent Members</p>
+                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Recent Members</h3>
                     {stats.loading ? (
                       <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
                     ) : (
@@ -366,12 +359,12 @@ export function AdminDashboard() {
                     )}
                   </div>
                 </div>
-              </motion.div>
+              </div>
             </div>
           </section>
 
           {/* Quick Actions */}
-          <section className="mt-8">
+          <section>
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">Quick Actions</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <motion.button
@@ -381,7 +374,7 @@ export function AdminDashboard() {
                 className="flex items-center justify-center p-4 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow"
               >
                 <FileText className="mr-2" />
-                View Family Details
+                View Family Records
               </motion.button>
               
               <motion.button
@@ -396,193 +389,16 @@ export function AdminDashboard() {
             </div>
           </section>
 
-          {/* Recent Activity Table */}
-          <section className="mt-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Recent Activity</h2>
-              <div className="flex items-center space-x-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Search activities..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                  />
-                </div>
-                <button className="p-2 rounded-lg border hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
-                  <SlidersHorizontal size={16} className="text-gray-600 dark:text-gray-300" />
-                </button>
-              </div>
-            </div>
-            
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-              {activitiesLoading ? (
-                <div className="p-8 flex justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
-                </div>
-              ) : recentActivities.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-                  No recent activities found
-                </div>
-              ) : (
-                <>
-                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-50 dark:bg-gray-700">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">User</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Action</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Family</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date & Time</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                      {paginatedActivity.map((item) => (
-                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
-                            <button
-                              onClick={() => navigate('/family-details')}
-                              className="text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none"
-                            >
-                              {item.user}
-                              {item.userEmail && (
-                                <span className="block text-xs text-gray-500 dark:text-gray-400">{item.userEmail}</span>
-                              )}
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.action}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                            <button
-                              onClick={() => navigate('/family-details')}
-                              className="text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none"
-                            >
-                              {item.family}
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.date}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  
-                  {/* Pagination */}
-                  <div className="px-6 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
-                    <div className="text-sm text-gray-700 dark:text-gray-300">
-                      Showing <span className="font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
-                      <span className="font-medium">
-                        {Math.min(currentPage * itemsPerPage, filteredActivity.length)}
-                      </span>{' '}
-                      of <span className="font-medium">{filteredActivity.length}</span> results
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                        disabled={currentPage === 1}
-                        className="p-2 rounded-md border border-gray-200 dark:border-gray-700 disabled:opacity-50"
-                      >
-                        <ChevronLeft size={16} />
-                      </button>
-                      {Array.from({ length: totalPages }).map((_, index) => (
-                        <button
-                          key={index}
-                          onClick={() => setCurrentPage(index + 1)}
-                          className={`w-8 h-8 rounded-md ${
-                            currentPage === index + 1
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
-                          }`}
-                        >
-                          {index + 1}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                        disabled={currentPage === totalPages}
-                        className="p-2 rounded-md border border-gray-200 dark:border-gray-700 disabled:opacity-50"
-                      >
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+          {/* Recent Activities Section */}
+          <section>
+            <RecentActivities />
           </section>
 
-          {/* Data Visualization */}
+          {/* Data Insights */}
           <section className="mt-8">
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">Data Insights</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Gender Distribution */}
-              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Gender Distribution</h3>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Male</span>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{mockChartData.genderRatio.male}</span>
-                    </div>
-                    {renderBar(mockChartData.genderRatio.male, 100, 'bg-blue-500')}
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Female</span>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{mockChartData.genderRatio.female}</span>
-                    </div>
-                    {renderBar(mockChartData.genderRatio.female, 100, 'bg-pink-500')}
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Other</span>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{mockChartData.genderRatio.other}</span>
-                    </div>
-                    {renderBar(mockChartData.genderRatio.other, 100, 'bg-purple-500')}
-                  </div>
-                </div>
-              </div>
-
-              {/* Age Groups */}
-              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Age Groups</h3>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Children (0-12)</span>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{mockChartData.ageGroups.children}</span>
-                    </div>
-                    {renderBar(mockChartData.ageGroups.children, 100, 'bg-yellow-500')}
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Teens (13-19)</span>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{mockChartData.ageGroups.teens}</span>
-                    </div>
-                    {renderBar(mockChartData.ageGroups.teens, 100, 'bg-green-500')}
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Young Adults (20-35)</span>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{mockChartData.ageGroups.youngAdults}</span>
-                    </div>
-                    {renderBar(mockChartData.ageGroups.youngAdults, 100, 'bg-blue-500')}
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Adults (36-65)</span>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{mockChartData.ageGroups.adults}</span>
-                    </div>
-                    {renderBar(mockChartData.ageGroups.adults, 100, 'bg-indigo-500')}
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Seniors (65+)</span>
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{mockChartData.ageGroups.seniors}</span>
-                    </div>
-                    {renderBar(mockChartData.ageGroups.seniors, 100, 'bg-red-500')}
-                  </div>
-                </div>
-              </div>
+            <div className="mb-8">
+              <DataInsights />
             </div>
           </section>
         </div>
