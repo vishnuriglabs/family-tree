@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Users, Home, FileText, UserCog, BarChart3, LogOut, 
   Search, ChevronLeft, ChevronRight, SlidersHorizontal, Bell, CalendarDays,
-  LineChart
+  LineChart, User
 } from 'lucide-react';
 import { DarkModeToggle } from './DarkModeToggle';
 import { motion } from 'framer-motion';
@@ -268,6 +268,19 @@ export function AdminDashboard() {
               >
                 <Home size={20} />
                 {!isSidebarCollapsed && <span className="ml-3">Families</span>}
+              </a>
+            </li>
+            <li>
+              <a 
+                href="#" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('/user-details');
+                }}
+                className="flex items-center p-3 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 group"
+              >
+                <User size={20} />
+                {!isSidebarCollapsed && <span className="ml-3">Users</span>}
               </a>
             </li>
             <li>

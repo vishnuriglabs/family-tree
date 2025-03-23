@@ -5,6 +5,7 @@ import { database } from './firebase';
 export interface FamilyMemberData {
   id?: string;
   name: string;
+  familyName?: string;
   gender: 'male' | 'female' | 'other';
   birthDate?: string;
   deathDate?: string | null;
@@ -37,6 +38,7 @@ export const addFamilyMember = async (memberData: FamilyMemberData): Promise<str
     // Remove any self-referential relationships to prevent bugs
     const cleanData = {
       name: memberData.name,
+      familyName: memberData.familyName || '',
       gender: memberData.gender,
       birthDate: memberData.birthDate || null,
       deathDate: memberData.deathDate || null,

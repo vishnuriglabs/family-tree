@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { User, Mail, LogOut, Share2, Printer, UserPlus, Download, FileJson, FileSpreadsheet, X } from 'lucide-react';
+import { User, Mail, LogOut, Share2, Printer, UserPlus, Download, FileText, X } from 'lucide-react';
 import { useAuth } from '../utils/AuthContext';
 import { getFamilyMembersByUser, getUserProfile } from '../utils/database';
 import { useNavigate } from 'react-router-dom';
 import { MemberDetailModal } from './MemberDetailModal';
-import { generateFamilyTreeJSON, generateFamilyTreeCSV, downloadFile, findRootMember } from '../utils/treeExport';
+import { findRootMember } from '../utils/treeExport';
+import { exportFamilyTreeAsPDF } from '../utils/pdfExport';
 
 // Family Tree Component
 const FamilyTree = ({ members, onMemberClick }) => {
@@ -146,7 +147,7 @@ export function NewDashboard() {
     }
   };
 
-  const handleExport = (format: 'json' | 'csv') => {
+  const handleExport = () => {
     const rootMember = findRootMember(members);
     
     if (!rootMember) {
@@ -157,13 +158,8 @@ export function NewDashboard() {
     const timestamp = new Date().toISOString().split('T')[0];
     const familyName = userProfile?.familyTreeName || rootMember.name.split(' ')[0] || 'Family';
     
-    if (format === 'json') {
-      const jsonData = generateFamilyTreeJSON(members);
-      downloadFile(jsonData, `${familyName}_Tree_${timestamp}.json`, 'application/json');
-    } else {
-      const csvData = generateFamilyTreeCSV(members);
-      downloadFile(csvData, `${familyName}_Tree_${timestamp}.csv`, 'text/csv');
-    }
+    // Export as PDF using jsPDF
+    exportFamilyTreeAsPDF(members, familyName, timestamp);
     
     setIsExportDropdownOpen(false);
   };
@@ -286,19 +282,11 @@ export function NewDashboard() {
                       </div>
                       
                       <button
-                        onClick={() => handleExport('json')}
+                        onClick={() => handleExport()}
                         className="flex items-center w-full px-3 py-2 text-sm text-left text-gray-300 hover:bg-gray-700"
                       >
-                        <FileJson className="w-4 h-4 mr-2 text-blue-400" />
-                        JSON Format
-                      </button>
-                      
-                      <button
-                        onClick={() => handleExport('csv')}
-                        className="flex items-center w-full px-3 py-2 text-sm text-left text-gray-300 hover:bg-gray-700"
-                      >
-                        <FileSpreadsheet className="w-4 h-4 mr-2 text-green-400" />
-                        CSV Format
+                        <FileText className="w-4 h-4 mr-2 text-red-400" />
+                        PDF Format
                       </button>
                     </div>
                   )}
@@ -365,4 +353,4 @@ export function NewDashboard() {
       )}
     </div>
   );
-} 
+}

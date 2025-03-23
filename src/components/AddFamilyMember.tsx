@@ -17,6 +17,7 @@ export function AddFamilyMember() {
   const [existingMembers, setExistingMembers] = useState<FamilyMember[]>([]);
   const [formData, setFormData] = useState({
     name: '',
+    familyName: '',
     dateOfBirth: '',
     gender: 'male',
     education: '',
@@ -77,6 +78,7 @@ export function AddFamilyMember() {
       // Create new family member
       const newMemberData = {
         name: formData.name,
+        familyName: formData.familyName,
         dateOfBirth: formData.dateOfBirth,
         gender: formData.gender,
         education: formData.education || '',
@@ -191,6 +193,18 @@ export function AddFamilyMember() {
               className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-300">Family Name</label>
+            <input
+              type="text"
+              required
+              className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
+              value={formData.familyName}
+              onChange={(e) => setFormData({ ...formData, familyName: e.target.value })}
+              placeholder="Enter family name"
             />
           </div>
 
@@ -346,4 +360,4 @@ export function AddFamilyMember() {
       </form>
     </div>
   );
-} 
+}
