@@ -326,6 +326,13 @@ export function UserDashboard() {
                 </div>
               )}
             </div>
+            <Link
+              to="/fix-relationships"
+              className="flex items-center space-x-2 text-gray-300 hover:text-white"
+            >
+              <RefreshCw className="w-5 h-5" />
+              <span>Fix Relationships</span>
+            </Link>
           </div>
         </div>
       </nav>

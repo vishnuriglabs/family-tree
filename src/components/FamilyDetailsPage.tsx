@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Search, Plus, Edit2, Trash2, ChevronLeft, ChevronRight, 
+  Search, Plus, Trash2, ChevronLeft, ChevronRight, 
   SlidersHorizontal, ArrowUpDown
 } from 'lucide-react';
 import { database } from '../utils/firebase';
-import { ref, get } from 'firebase/database';
+import { ref, get, remove, push } from 'firebase/database';
 import { motion } from 'framer-motion';
+import { useAuth } from '../utils/AuthContext';
+import { logActivity, ActivityType } from '../utils/activity';
 
 interface FamilyMember {
   id: string;
@@ -14,14 +16,18 @@ interface FamilyMember {
   familyName: string;
   relation: string;
   dob: string;
+  birthDate: string;
   gender: string;
   education: string;
   job: string;
-  contact: string;
+  phone: string;
+  createdBy?: string;
+  createdByName?: string;
 }
 
 export function FamilyDetailsPage() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,17 +50,36 @@ export function FamilyDetailsPage() {
         
         if (snapshot.exists()) {
           const membersData = snapshot.val();
-          const formattedMembers: FamilyMember[] = Object.entries(membersData).map(([id, data]: [string, any]) => ({
-            id,
-            name: data.name || '',
-            familyName: data.familyName || '',
-            relation: data.relation || '',
-            dob: data.dateOfBirth || '',
-            gender: data.gender || '',
-            education: data.education || '',
-            job: data.occupation || '',
-            contact: data.contactNumber || ''
-          }));
+          const formattedMembers: FamilyMember[] = await Promise.all(
+            Object.entries(membersData).map(async ([id, data]: [string, any]) => {
+              // Get creator's name if available
+              let creatorName = 'Unknown User';
+              if (data.createdBy) {
+                const userRef = ref(database, `users/${data.createdBy}`);
+                const userSnapshot = await get(userRef);
+                if (userSnapshot.exists()) {
+                  const userData = userSnapshot.val();
+                  creatorName = userData.displayName || userData.email || 'Unknown User';
+                }
+              }
+              
+              return {
+                id,
+                name: data.name || '',
+                familyName: data.familyName || '',
+                relation: data.relation || '',
+                dob: data.dob || '',
+                birthDate: data.birthDate || '',
+                gender: data.gender || '',
+                education: data.education || '',
+                job: data.job || data.occupation || '',
+                phone: data.phone || data.contactNumber || '',
+                createdBy: data.createdBy || '',
+                createdByName: creatorName
+              };
+            })
+          );
+          console.log('Formatted Members:', formattedMembers);
           setMembers(formattedMembers);
         }
       } catch (error) {
@@ -112,20 +137,70 @@ export function FamilyDetailsPage() {
     navigate('/admin-dashboard/add-member');
   };
 
-  const handleEditMember = (id: string) => {
-    // Implement edit functionality
-    console.log('Edit member:', id);
-  };
+  const handleDeleteMember = async (id: string) => {
+    if (!currentUser) {
+      alert('You must be logged in to delete members');
+      return;
+    }
 
-  const handleDeleteMember = (id: string) => {
-    // Implement delete functionality
-    console.log('Delete member:', id);
+    const isConfirmed = window.confirm('Are you sure you want to delete this family member? This action cannot be undone.');
+    
+    if (!isConfirmed) {
+      return;
+    }
+
+    try {
+      const deletedMember = members.find(m => m.id === id);
+      
+      const memberRef = ref(database, `familyMembers/${id}`);
+      await remove(memberRef);
+
+      setMembers(prevMembers => prevMembers.filter(member => member.id !== id));
+
+      await logActivity(
+        currentUser.uid,
+        currentUser.displayName || currentUser.email || currentUser.uid,
+        ActivityType.MEMBER_DELETED,
+        {
+          userEmail: currentUser.email,
+          details: `Deleted family member: ${deletedMember?.name}`,
+          entityId: id,
+          family: deletedMember?.familyName,
+          user: currentUser.displayName || currentUser.email || currentUser.uid
+        }
+      );
+      
+      alert('Member deleted successfully');
+    } catch (error) {
+      console.error('Error deleting member:', error);
+      alert('Failed to delete member. Please try again.');
+    }
   };
 
   // Format date from yyyy-mm-dd to mm/dd/yyyy
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US');
+    if (!dateString || dateString === 'Invalid Date') return 'N/A';
+    
+    try {
+      // Check if the date is in the format YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        
+        if (!isNaN(date.getTime())) {
+          return new Intl.DateTimeFormat('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+          }).format(date);
+        }
+      }
+      
+      return dateString; // Return original string if it doesn't match expected format
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'N/A';
+    }
   };
 
   // Handle back navigation
@@ -225,6 +300,7 @@ export function FamilyDetailsPage() {
                       <ArrowUpDown size={14} className="ml-1" />
                     </div>
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Created By</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Contact</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -232,24 +308,19 @@ export function FamilyDetailsPage() {
               <tbody className="divide-y divide-gray-700">
                 {paginatedMembers.map((member) => (
                   <tr key={member.id} className="hover:bg-gray-700">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.familyName}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.relation}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(member.dob)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.gender}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.education}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.job}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.contact}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.name || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.familyName || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.relation || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex space-x-2">
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => handleEditMember(member.id)}
-                          className="p-1 hover:text-blue-500"
-                        >
-                          <Edit2 size={16} />
-                        </motion.button>
+                      {formatDate(member.birthDate) || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.gender || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.education || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.job || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.createdByName || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">{member.phone || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <div className="flex justify-center">
                         <motion.button
                           whileHover={{ scale: 1.1 }}
                           whileTap={{ scale: 0.9 }}
@@ -307,4 +378,4 @@ export function FamilyDetailsPage() {
       </div>
     </div>
   );
-} 
+}

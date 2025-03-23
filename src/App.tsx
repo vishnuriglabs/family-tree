@@ -19,6 +19,9 @@ import { UpdateRelationships } from './components/UpdateRelationships';
 import { FamilyRecordsPage } from './components/FamilyRecordsPage';
 import { AdminAuthProvider, useAdminAuth } from './utils/AdminAuthContext';
 import { AuthProvider, useAuth } from './utils/AuthContext';
+import { MemberDetails } from './components/MemberDetails';
+import { FixRelationships } from './components/FixRelationships';
+import { Analytics } from './components/Analytics';
 
 // Debug component to log route changes
 const RouteLogger = () => {
@@ -31,7 +34,7 @@ const RouteLogger = () => {
   return null;
 };
 
-// Create an AdminProtectedRoute component to protect admin routes
+// Update the AdminProtectedRoute component
 const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAdmin, loading } = useAdminAuth();
   const navigate = useNavigate();
@@ -42,11 +45,32 @@ const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     }
   }, [isAdmin, loading, navigate]);
 
+  // Show loading state
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
+          <p className="mt-4 text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
+  // Only render children if admin is authenticated
   return isAdmin ? children : null;
+};
+
+// Add this new component near the top, after other route protection components
+const FixRelationshipsRoute = () => {
+  const { currentUser } = useAuth();
+  const { isAdmin } = useAdminAuth();
+  
+  if (!currentUser && !isAdmin) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return <FixRelationships />;
 };
 
 function App() {
@@ -85,6 +109,11 @@ function App() {
                     <UpdateRelationships />
                   </AdminProtectedRoute>
                 } />
+                <Route path="/analytics" element={
+                  <AdminProtectedRoute>
+                    <Analytics />
+                  </AdminProtectedRoute>
+                } />
                 
                 {/* Redirect old routes to new admin routes */}
                 <Route path="/family-details" element={<Navigate to="/admin-dashboard/family-details" replace />} />
@@ -120,6 +149,22 @@ function App() {
                     <FamilyTreeContainer />
                   </ProtectedRoute>
                 } />
+                
+                {/* Member details route */}
+                <Route 
+                  path="/member/:memberId" 
+                  element={
+                    <ProtectedRoute>
+                      <MemberDetails />
+                    </ProtectedRoute>
+                  } 
+                />
+                
+                {/* Fix relationships route */}
+                <Route 
+                  path="/fix-relationships" 
+                  element={<FixRelationshipsRoute />}
+                />
                 
                 {/* 404 route */}
                 <Route path="*" element={<NotFoundPage />} />

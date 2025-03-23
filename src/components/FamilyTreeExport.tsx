@@ -24,9 +24,9 @@ const exportAsJson = () => {
     if (currentUser) {
       logActivity(
         currentUser.uid,
-        currentUser.displayName || 'User',
+        currentUser.displayName || currentUser.email || 'Unknown User',
         ActivityType.FAMILY_EXPORTED,
-        {
+        { 
           userEmail: currentUser.email,
           details: 'Exported family tree as JSON'
         }
@@ -85,9 +85,9 @@ const exportAsCsv = () => {
     if (currentUser) {
       logActivity(
         currentUser.uid,
-        currentUser.displayName || 'User',
+        currentUser.displayName || currentUser.email || 'Unknown User',
         ActivityType.FAMILY_EXPORTED,
-        {
+        { 
           userEmail: currentUser.email,
           details: 'Exported family tree as CSV'
         }
@@ -106,4 +106,4 @@ const exportAsCsv = () => {
       description: "There was an error exporting your family tree.",
     });
   }
-}; 
+};

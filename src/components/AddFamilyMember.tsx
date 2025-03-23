@@ -46,6 +46,20 @@ export function AddFamilyMember() {
           });
         });
         setExistingMembers(members);
+
+        // Check if we're coming from member details page
+        const sourceMemberId = sessionStorage.getItem('sourceMemberId');
+        const relationshipType = sessionStorage.getItem('relationshipType');
+
+        if (sourceMemberId && relationshipType) {
+          // Pre-select the existing member and relationship type
+          setFormData(prev => ({
+            ...prev,
+            connectToExisting: true,
+            selectedMemberId: sourceMemberId,
+            relationshipType: relationshipType
+          }));
+        }
       }
     };
 
@@ -65,13 +79,15 @@ export function AddFamilyMember() {
         name: formData.name,
         dateOfBirth: formData.dateOfBirth,
         gender: formData.gender,
-        education: formData.education,
-        occupation: formData.occupation,
-        phone: formData.phone,
-        email: formData.email,
-        address: formData.address,
+        education: formData.education || '',
+        occupation: formData.occupation || '',
+        phone: formData.phone || '',
+        email: formData.email || '',
+        address: formData.address || '',
         createdBy: currentUser.uid,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        relation: formData.connectToExisting ? formData.relationshipType : null,
+        spouseId: null // Initialize as null, will be updated if spouse relationship
       };
 
       // Push new member to get their ID
@@ -87,30 +103,55 @@ export function AddFamilyMember() {
         const selectedMemberSnapshot = await get(ref(database, `familyMembers/${formData.selectedMemberId}`));
         const selectedMemberData = selectedMemberSnapshot.val();
 
-        // Update relationships
-        if (formData.relationshipType === 'spouse') {
-          // Bidirectional spouse relationship
-          updates[`/relationships/${newMemberId}/spouse`] = formData.selectedMemberId;
-          updates[`/relationships/${formData.selectedMemberId}/spouse`] = newMemberId;
-          
-          // Update both members' relationship status
-          updates[`/familyMembers/${newMemberId}/spouseId`] = formData.selectedMemberId;
-          updates[`/familyMembers/${formData.selectedMemberId}/spouseId`] = newMemberId;
-        } else if (formData.relationshipType === 'child') {
-          // Parent-child relationship
-          updates[`/relationships/${newMemberId}/parents/${formData.selectedMemberId}`] = true;
-          updates[`/relationships/${formData.selectedMemberId}/children/${newMemberId}`] = true;
-        } else if (formData.relationshipType === 'parent') {
-          // Child-parent relationship
-          updates[`/relationships/${newMemberId}/children/${formData.selectedMemberId}`] = true;
-          updates[`/relationships/${formData.selectedMemberId}/parents/${newMemberId}`] = true;
-        } else if (formData.relationshipType === 'sibling') {
-          // Bidirectional sibling relationship
-          updates[`/relationships/${newMemberId}/siblings/${formData.selectedMemberId}`] = true;
-          updates[`/relationships/${formData.selectedMemberId}/siblings/${newMemberId}`] = true;
+        // Update relationships based on type
+        switch (formData.relationshipType) {
+          case 'spouse':
+            // Update both members' spouseId fields
+            updates[`/familyMembers/${newMemberId}/spouseId`] = formData.selectedMemberId;
+            updates[`/familyMembers/${formData.selectedMemberId}/spouseId`] = newMemberId;
+            
+            // Update relationships node with bidirectional spouse connection
+            updates[`/relationships/${newMemberId}/spouse`] = formData.selectedMemberId;
+            updates[`/relationships/${formData.selectedMemberId}/spouse`] = newMemberId;
+            
+            // Set relation field for both members
+            updates[`/familyMembers/${newMemberId}/relation`] = 'spouse';
+            updates[`/familyMembers/${formData.selectedMemberId}/relation`] = 'spouse';
+            
+            // Log activity
+            const spouseActivityRef = push(ref(database, 'activities'));
+            updates[`/activities/${spouseActivityRef.key}`] = {
+              type: 'SPOUSE_ADDED',
+              timestamp: Date.now(),
+              userId: currentUser.uid,
+              details: `Added spouse relationship between ${formData.name} and ${selectedMemberData.name}`,
+              memberId1: newMemberId,
+              memberId2: formData.selectedMemberId
+            };
+            break;
+
+          case 'child':
+            // Set up parent-child relationship
+            updates[`/relationships/${formData.selectedMemberId}/children/${newMemberId}`] = true;
+            updates[`/relationships/${newMemberId}/parents/${formData.selectedMemberId}`] = true;
+            updates[`/familyMembers/${newMemberId}/parentId`] = formData.selectedMemberId;
+            break;
+
+          case 'parent':
+            // Set up child-parent relationship
+            updates[`/relationships/${newMemberId}/children/${formData.selectedMemberId}`] = true;
+            updates[`/relationships/${formData.selectedMemberId}/parents/${newMemberId}`] = true;
+            updates[`/familyMembers/${formData.selectedMemberId}/parentId`] = newMemberId;
+            break;
+
+          case 'sibling':
+            // Create bidirectional sibling relationship
+            updates[`/relationships/${newMemberId}/siblings/${formData.selectedMemberId}`] = true;
+            updates[`/relationships/${formData.selectedMemberId}/siblings/${newMemberId}`] = true;
+            break;
         }
 
-        // Add activity log
+        // Log general relationship activity
         const activityRef = push(ref(database, 'activities'));
         updates[`/activities/${activityRef.key}`] = {
           type: 'RELATIONSHIP_ADDED',
@@ -126,8 +167,8 @@ export function AddFamilyMember() {
       // Apply all updates atomically
       await update(ref(database), updates);
 
-      // Navigate back to family tree view
-      navigate('/family-tree');
+      // Navigate back
+      navigate(-1);
     } catch (error) {
       console.error('Error adding family member:', error);
     } finally {
