@@ -124,7 +124,15 @@ export function DataInsights() {
 
   return (
     <div className="bg-gray-900 p-6 rounded-lg">
-      <h2 className="text-2xl font-bold text-white mb-6">Data Insights</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-white">Data Insights</h2>
+        <div className="flex space-x-2">
+          <div className="bg-gray-800 px-4 py-2 rounded-lg">
+            <p className="text-sm text-gray-400">Total Members</p>
+            <p className="text-xl font-bold text-white">{totalMembers}</p>
+          </div>
+        </div>
+      </div>
       
       {loading ? (
         <div className="flex justify-center items-center h-32">
@@ -136,6 +144,43 @@ export function DataInsights() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Age Distribution Chart */}
+          <div className="bg-gray-800 p-6 rounded-lg col-span-2 mb-6">
+            <h3 className="text-xl font-semibold text-white mb-4">Age Distribution</h3>
+            <div className="relative h-64">
+              {Object.entries(ageGroups).map(([group, count], index) => {
+                const maxCount = Math.max(...Object.values(ageGroups));
+                const height = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                const colors = {
+                  children: 'bg-yellow-500',
+                  teens: 'bg-green-500',
+                  youngAdults: 'bg-blue-500',
+                  adults: 'bg-purple-500',
+                  seniors: 'bg-red-500'
+                };
+                return (
+                  <div
+                    key={group}
+                    className="absolute bottom-0 transition-all duration-300"
+                    style={{
+                      height: `${height}%`,
+                      width: '15%',
+                      left: `${(index * 20) + 2.5}%`,
+                    }}
+                  >
+                    <div className={`h-full ${colors[group]} rounded-t-lg relative group hover:opacity-90`}>
+                      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-700 px-2 py-1 rounded text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                        {count} members
+                      </div>
+                    </div>
+                    <div className="text-center mt-2 text-sm text-gray-400">
+                      {group.replace(/([A-Z])/g, ' $1').trim()}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           {/* Gender Distribution */}
           <div className="bg-gray-800 p-6 rounded-lg">
             <h3 className="text-xl font-semibold text-white mb-4">Gender Distribution</h3>
@@ -255,4 +300,4 @@ export function DataInsights() {
       )}
     </div>
   );
-} 
+}

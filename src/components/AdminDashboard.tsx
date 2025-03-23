@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Home, FileText, UserCog, BarChart3, LogOut, 
-  Search, ChevronLeft, ChevronRight, SlidersHorizontal, Bell, CalendarDays
+  Search, ChevronLeft, ChevronRight, SlidersHorizontal, Bell, CalendarDays,
+  LineChart
 } from 'lucide-react';
 import { DarkModeToggle } from './DarkModeToggle';
 import { motion } from 'framer-motion';
@@ -272,6 +273,10 @@ export function AdminDashboard() {
             <li>
               <a 
                 href="#" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('/analytics');
+                }}
                 className="flex items-center p-3 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 group"
               >
                 <BarChart3 size={20} />
@@ -375,7 +380,7 @@ export function AdminDashboard() {
           {/* Quick Actions */}
           <section>
             <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">Quick Actions</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.98 }}
@@ -384,16 +389,6 @@ export function AdminDashboard() {
               >
                 <FileText className="mr-2" />
                 View Family Records
-              </motion.button>
-              
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => navigate('/update-relationships')}
-                className="flex items-center justify-center p-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow"
-              >
-                <UserCog className="mr-2" />
-                Manage Relationships
               </motion.button>
             </div>
           </section>
@@ -414,4 +409,4 @@ export function AdminDashboard() {
       </div>
     </div>
   );
-} 
+}

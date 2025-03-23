@@ -78,6 +78,12 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
           loginTime: new Date().toISOString()
         };
         
+        // Import the admin setup utility
+        const { setupInitialAdmin } = await import('./adminSetup');
+        
+        // Ensure admin user exists in the database
+        await setupInitialAdmin();
+        
         sessionStorage.setItem('adminUser', JSON.stringify(adminUser));
         setAdminUser(adminUser);
         setIsAdmin(true);
@@ -126,4 +132,4 @@ export function AdminAuthProvider({ children }: AdminAuthProviderProps) {
       {!loading && children}
     </AdminAuthContext.Provider>
   );
-} 
+}

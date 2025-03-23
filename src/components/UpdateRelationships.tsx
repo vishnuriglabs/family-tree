@@ -128,6 +128,12 @@ export function UpdateRelationships() {
           await addSecondParentToChild(selectedMember2, member2.parentId, selectedMember1);
           setSuccess(`Added ${member1.name} as second parent of ${member2.name}`);
           break;
+
+        case 'sibling':
+          // Create bidirectional sibling relationship
+          await setSiblingRelationship(selectedMember1, selectedMember2);
+          setSuccess(`Set ${member1.name} and ${member2.name} as siblings`);
+          break;
           
         default:
           setError('Please select a valid relationship type');
@@ -275,6 +281,7 @@ export function UpdateRelationships() {
               <option value="child-parent">is child of</option>
               <option value="spouse">is spouse of</option>
               <option value="second-parent">is second parent of</option>
+              <option value="sibling">is sibling of</option>
             </select>
           </div>
           
@@ -355,4 +362,4 @@ export function UpdateRelationships() {
       </div>
     </div>
   );
-} 
+}
