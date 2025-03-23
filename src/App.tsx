@@ -21,7 +21,6 @@ import { AdminAuthProvider, useAdminAuth } from './utils/AdminAuthContext';
 import { AuthProvider, useAuth } from './utils/AuthContext';
 import { MemberDetails } from './components/MemberDetails';
 import { FixRelationships } from './components/FixRelationships';
-import { Analytics } from './components/Analytics';
 
 // Debug component to log route changes
 const RouteLogger = () => {
@@ -107,11 +106,6 @@ function App() {
                 <Route path="/admin-dashboard/manage-relationships" element={
                   <AdminProtectedRoute>
                     <UpdateRelationships />
-                  </AdminProtectedRoute>
-                } />
-                <Route path="/analytics" element={
-                  <AdminProtectedRoute>
-                    <Analytics />
                   </AdminProtectedRoute>
                 } />
                 

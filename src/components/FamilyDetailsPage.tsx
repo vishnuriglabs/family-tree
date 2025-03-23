@@ -157,19 +157,20 @@ export function FamilyDetailsPage() {
 
       setMembers(prevMembers => prevMembers.filter(member => member.id !== id));
 
-      await logActivity(
-        currentUser.uid,
-        currentUser.displayName || currentUser.email || currentUser.uid,
-        ActivityType.MEMBER_DELETED,
-        {
-          userEmail: currentUser.email,
-          details: `Deleted family member: ${deletedMember?.name}`,
-          entityId: id,
-          family: deletedMember?.familyName,
-          user: currentUser.displayName || currentUser.email || currentUser.uid
-        }
-      );
+      // Log the deletion activity with user information
+      const newActivity = {
+        type: ActivityType.MEMBER_DELETED,
+        timestamp: Date.now(),
+        details: `Deleted family member: ${deletedMember?.name}`,
+        memberId: id,
+        memberName: deletedMember?.name,
+        action: 'delete',
+        userId: currentUser.uid,
+        userEmail: currentUser.email,
+        userName: currentUser.displayName || currentUser.email
+      };
       
+      await push(ref(database, 'activities'), newActivity);
       alert('Member deleted successfully');
     } catch (error) {
       console.error('Error deleting member:', error);
@@ -378,4 +379,4 @@ export function FamilyDetailsPage() {
       </div>
     </div>
   );
-}
+} 

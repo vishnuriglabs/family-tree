@@ -273,22 +273,6 @@ export const setParentForChild = async (parentId: string, childId: string) => {
   }
 };
 
-export const setSiblingRelationship = async (member1Id: string, member2Id: string) => {
-  try {
-    const updates: { [key: string]: any } = {};
-    
-    // Create bidirectional sibling relationship
-    updates[`/relationships/${member1Id}/siblings/${member2Id}`] = true;
-    updates[`/relationships/${member2Id}/siblings/${member1Id}`] = true;
-    
-    // Apply all updates atomically
-    await update(ref(database), updates);
-  } catch (error) {
-    console.error('Error setting sibling relationship:', error);
-    throw error;
-  }
-};
-
 export const setSpouseRelationship = async (spouse1Id: string, spouse2Id: string) => {
   try {
     // Safety check to prevent self-referential relationships
@@ -582,4 +566,4 @@ export const fixSelfReferences = async (memberId: string) => {
     console.error(`Error fixing self-references for ${memberId}:`, error);
     return false;
   }
-};
+}; 
